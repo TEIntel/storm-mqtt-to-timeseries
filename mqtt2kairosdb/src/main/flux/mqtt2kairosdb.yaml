@@ -1,0 +1,89 @@
+# topology definition
+# name to be used when submitting
+name: "mqtt-topology"
+
+components:
+   ########## MQTT Spout Config ############
+
+  - id: "mqtt-type"
+    className: "com.teintel.storm.mqtt2influxdb.MqttMessageMapper"
+
+  - id: "mqtt-collectd-options"
+    className: "backtype.storm.mqtt.common.MqttOptions"
+    properties:
+      - name: "url"
+        value: "tcp://localhost:1883"
+      - name: "topics"
+        value:
+          - "collectd/#"
+
+  - id: "mqtt-openhab-options"
+    className: "backtype.storm.mqtt.common.MqttOptions"
+    properties:
+      - name: "url"
+        value: "tcp://localhost:1883"
+      - name: "topics"
+        value:
+          - "openhab/out/#"
+
+
+  - id: "kairosdb-options"
+    className: "com.teintel.storm.mqtt2influxdb.KairosDBOptions"
+    properties:
+      - name: "url"
+        value: "http://localhost:9090"
+
+# topology configuration
+config:
+  topology.workers: 1
+  topology.max.spout.pending: 1000
+
+# spout definitions
+spouts:
+  - id: "mqtt-collectd-spout"
+    className: "backtype.storm.mqtt.spout.MqttSpout"
+    constructorArgs:
+      - ref: "mqtt-type"
+      - ref: "mqtt-collectd-options"
+    parallelism: 1
+
+  - id: "mqtt-openhab-spout"
+    className: "backtype.storm.mqtt.spout.MqttSpout"
+    constructorArgs:
+      - ref: "mqtt-type"
+      - ref: "mqtt-openhab-options"
+    parallelism: 1
+
+
+# bolt definitions
+bolts:
+  - id: "log"
+    className: "org.apache.storm.flux.wrappers.bolts.LogInfoBolt"
+    parallelism: 1
+
+  - id: "kairosdb"
+    className: "com.teintel.storm.mqtt2influxdb.KairosDBBolt"
+    constructorArgs:
+      - ref: "kairosdb-options"
+    parallelism: 1
+
+
+streams:
+  - from: "mqtt-collectd-spout"
+    to: "log"
+    grouping:
+      type: SHUFFLE
+  - from: "mqtt-openhab-spout"
+    to: "log"
+    grouping:
+      type: SHUFFLE
+
+  - from: "mqtt-collectd-spout"
+    to: "kairosdb"
+    grouping:
+      type: SHUFFLE
+
+  - from: "mqtt-openhab-spout"
+    to: "kairosdb"
+    grouping:
+      type: SHUFFLE
